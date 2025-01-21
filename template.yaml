@@ -1,0 +1,178 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Cognito user pool with hosted domain
+
+Parameters:
+  AppName:
+    Type: String
+    Description: Name of the application
+  ClientDomains:
+    Type: CommaDelimitedList
+    Description: Array of domains allowed to use this UserPool
+  CallbackURL:
+    Type: CommaDelimitedList
+    Description: Callback URL for the UserPoolClient
+  LogoutURL:
+    Type: CommaDelimitedList
+    Description: Logout URL for the UserPoolClient
+  BucketName:
+    Type: String
+    Description: Name of the S3 bucket where the signature will be stored
+
+Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub ${AppName}-UserPool
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Schema:
+        - AttributeDataType: String
+          Name: email
+          Required: false
+        - AttributeDataType: String
+          Name: name
+          Required: true
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+
+  UserIdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: !Sub ${AppName}-IdentityPool
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolClient
+          ProviderName: !GetAtt UserPool.ProviderName
+      AllowUnauthenticatedIdentities: false
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: !Sub ${AppName}-UserPoolClient
+      GenerateSecret: false # set to false for web clients
+      SupportedIdentityProviders:
+        - COGNITO
+      CallbackURLs: !Ref CallbackURL
+      LogoutURLs: !Ref LogoutURL
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+        # - implicit # for testing with postman
+      AllowedOAuthScopes:
+        - openid
+        - aws.cognito.signin.user.admin
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub ${AppName}-${AWS::AccountId}
+      UserPoolId: !Ref UserPool
+
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+            AllowedOrigins: !Ref ClientDomains
+
+  CognitoAuthRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                cognito-identity.amazonaws.com:aud: !Ref UserIdentityPool
+              "ForAnyValue:StringLike":
+                cognito-identity.amazonaws.com:amr: authenticated
+      Policies:
+        - PolicyName: InvoicingAppS3AccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ListYourObjects
+                Effect: Allow
+                Action: "s3:ListBucket"
+                Resource:
+                  - !GetAtt S3Bucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - !Sub "cognito/${AppName}/${!cognito-identity.amazonaws.com:sub}/*"
+              - Sid: ReadWriteDeleteYourObjects
+                Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                  - "s3:DeleteObject"
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3Bucket}/cognito/${AppName}/${!cognito-identity.amazonaws.com:sub}/*"
+
+  IdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref UserIdentityPool
+      Roles:
+        authenticated: !GetAtt CognitoAuthRole.Arn
+
+Outputs:
+  CognitoAuthority:
+    Description: Cognito Authority URL
+    Value: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+
+  CognitoDomain:
+    Description: Cognito Domain URL
+    Value: !Sub https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com
+
+  AWSRegion:
+    Description: AWS Region
+    Value: !Ref AWS::Region
+
+  CognitoClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+
+  CognitoIdentityPoolId:
+    Description: Cognito Identity Pool ID
+    Value: !Ref UserIdentityPool
+
+  CognitoResponseType:
+    Description: Cognito Response Type
+    Value: code
+
+  CognitoScope:
+    Description: Cognito Scope
+    Value: "aws.cognito.signin.user.admin openid"
+
+  S3BucketName:
+    Description: S3 Bucket Name
+    Value: !Ref S3Bucket
+
+  AppName:
+    Description: Application Name
+    Value: !Ref AppName
+
+  CognitoIdpEndpoint:
+    Description: Cognito Identity Provider Endpoint
+    Value: !Sub cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
