@@ -9,10 +9,10 @@ Parameters:
   ClientDomains:
     Type: CommaDelimitedList
     Description: Array of domains allowed to use this UserPool
-  CallbackURL:
+  CallbackURLs:
     Type: CommaDelimitedList
     Description: Callback URL for the UserPoolClient
-  LogoutURL:
+  LogoutURLs:
     Type: CommaDelimitedList
     Description: Logout URL for the UserPoolClient
   BucketName:
@@ -60,8 +60,8 @@ Resources:
       GenerateSecret: false # set to false for web clients
       SupportedIdentityProviders:
         - COGNITO
-      CallbackURLs: !Ref CallbackURL
-      LogoutURLs: !Ref LogoutURL
+      CallbackURLs: !Ref CallbackURLs
+      LogoutURLs: !Ref LogoutURLs
       AllowedOAuthFlowsUserPoolClient: true
       AllowedOAuthFlows:
         - code
