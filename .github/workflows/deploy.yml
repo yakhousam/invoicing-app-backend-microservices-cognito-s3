@@ -34,4 +34,4 @@ jobs:
             --resolve-s3 \
             --stack-name invoicing-app-cognito-v2 \
             --capabilities CAPABILITY_IAM \
-            --parameter-overrides AppName=${{ secrets.APP_NAME }} ClientDomains=${{ secrets.CLIENT_DOMAINS }} CallbackURLs==${{ secrets.CALLBACK_URLs }} LogoutURLs==${{ secrets.LOGOUT_URLs }} BucketName==${{ secrets.BUCKET_NAME }} \
+            --parameter-overrides AppName=${{ secrets.APP_NAME }} ClientDomains=${{ secrets.CLIENT_DOMAINS }} CallbackURLs=${{ secrets.CALLBACK_URLs }} LogoutURLs=${{ secrets.LOGOUT_URLs }} BucketName=${{ secrets.BUCKET_NAME }} \
